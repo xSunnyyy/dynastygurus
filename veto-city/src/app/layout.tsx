@@ -4,13 +4,13 @@ import { QueryProvider } from "./components/QueryProvider";
 import { ToastProvider } from "./components/ui";
 
 export const metadata: Metadata = {
-  title: "Veto City - Fantasy Football Hub",
+  title: "Dynasty Gurus - Dynasty Football Hub",
   description: "Your comprehensive fantasy football league dashboard powered by Sleeper",
-  applicationName: "Veto City",
+  applicationName: "Dynasty Gurus",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Veto City",
+    title: "Dynasty Gurusy",
   },
   formatDetection: {
     telephone: false,
