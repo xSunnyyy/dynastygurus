@@ -1,6 +1,8 @@
 import Link from "next/link";
 import FloatingNav from "@/app/components/FloatingNav";
-import { DashboardCards } from "./components/DashboardCards";
+import { ChampionshipBanners } from "./components/ChampionshipBanners";
+import { LeagueAtAGlance } from "./components/LeagueAtAGlance";
+import { LeagueHistory } from "./components/LeagueHistory";
 
 export default function HomePage() {
   return (
@@ -8,7 +10,7 @@ export default function HomePage() {
       <FloatingNav />
 
       {/* leave space for floating nav */}
-      <div className="mx-auto max-w-7xl px-4 pb-10 pt-20 md:pt-28">
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 md:pt-28">
         {/* Small, clean hero (not a banner) */}
         <section className="mb-8 flex flex-col items-center gap-4 text-center">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Dynasty Gurus</h1>
@@ -20,7 +22,11 @@ export default function HomePage() {
           </Link>
         </section>
 
-        <DashboardCards />
+        <ChampionshipBanners />
+
+        <LeagueAtAGlance />
+
+        <LeagueHistory />
       </div>
     </main>
   );

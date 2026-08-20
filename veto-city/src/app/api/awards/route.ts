@@ -31,13 +31,23 @@ function recordKey(r: any) {
   return { wins, ties, losses, pf };
 }
 
+type OwnerInfo = {
+  managerId: string | null;
+  ownerName: string;
+  name: string;
+  avatar: string | null;
+  wins: number;
+  losses: number;
+  ties: number;
+};
+
 function buildRosterToOwner(users: any[], rosters: any[]) {
   const userById = new Map<string, any>();
   for (const u of users || []) {
     if (u?.user_id) userById.set(String(u.user_id), u);
   }
 
-  const rosterToOwner = new Map<number, { name: string; avatar: string | null }>();
+  const rosterToOwner = new Map<number, OwnerInfo>();
   for (const r of rosters || []) {
     const rid = Number(r?.roster_id);
     if (!Number.isFinite(rid)) continue;
@@ -45,25 +55,38 @@ function buildRosterToOwner(users: any[], rosters: any[]) {
     const ownerId = safeStr(r?.owner_id);
     const u = ownerId ? userById.get(ownerId) : null;
 
+    const ownerName = safeStr(u?.display_name).trim() || safeStr(u?.username).trim();
+
     const name =
       safeStr(u?.metadata?.team_name).trim() ||
-      safeStr(u?.display_name).trim() ||
-      safeStr(u?.username).trim() ||
+      ownerName ||
       `Team ${rid}`;
 
     const avatar = u?.avatar ? safeStr(u.avatar) : null;
 
-    rosterToOwner.set(rid, { name, avatar });
+    const wins = Number(r?.settings?.wins ?? 0) || 0;
+    const losses = Number(r?.settings?.losses ?? 0) || 0;
+    const ties = Number(r?.settings?.ties ?? 0) || 0;
+
+    rosterToOwner.set(rid, { managerId: ownerId || null, ownerName, name, avatar, wins, losses, ties });
   }
 
   return rosterToOwner;
 }
 
+// Placement games in a Sleeper bracket carry a `p` (place) field: p:1 is the
+// championship game (winner takes 1st, loser takes 2nd), p:3 is the 3rd
+// place game, etc.
+function placementGame(bracket: any[] | null | undefined, place: number) {
+  if (!Array.isArray(bracket) || !bracket.length) return null;
+  return bracket.find((x) => Number(x?.p) === place) ?? null;
+}
+
 function bracketWinnerRosterId(bracket: any[] | null | undefined): number | null {
   if (!Array.isArray(bracket) || !bracket.length) return null;
 
-  const p1 = bracket.find((x) => Number(x?.p) === 1 && Number.isFinite(Number(x?.w)));
-  if (p1) return Number(p1.w);
+  const p1 = placementGame(bracket, 1);
+  if (p1 && Number.isFinite(Number(p1.w))) return Number(p1.w);
 
   const withW = bracket
     .filter((x) => Number.isFinite(Number(x?.r)) && Number.isFinite(Number(x?.w)))
@@ -73,13 +96,18 @@ function bracketWinnerRosterId(bracket: any[] | null | undefined): number | null
   return null;
 }
 
-function rosterInfo(
-  rosterToOwner: Map<number, { name: string; avatar: string | null }>,
-  rid: number | null
-) {
-  if (!rid || !Number.isFinite(rid)) return { rosterId: null, name: "—", avatar: null };
+function rosterInfo(rosterToOwner: Map<number, OwnerInfo>, rid: number | null) {
+  if (!rid || !Number.isFinite(rid))
+    return { rosterId: null, managerId: null, ownerName: "", name: "—", avatar: null, record: null };
   const o = rosterToOwner.get(rid);
-  return { rosterId: rid, name: o?.name ?? `Team ${rid}`, avatar: o?.avatar ?? null };
+  return {
+    rosterId: rid,
+    managerId: o?.managerId ?? null,
+    ownerName: o?.ownerName ?? "",
+    name: o?.name ?? `Team ${rid}`,
+    avatar: o?.avatar ?? null,
+    record: o ? { wins: o.wins, losses: o.losses, ties: o.ties } : null,
+  };
 }
 
 export async function GET() {
@@ -118,6 +146,12 @@ export async function GET() {
           ? Number(leagueData.metadata.latest_league_winner_roster_id)
           : null);
 
+      const champGame = placementGame(winnersBracket, 1);
+      const thirdGame = placementGame(winnersBracket, 3);
+      const runnerUpRid =
+        champGame && Number.isFinite(Number(champGame.l)) ? Number(champGame.l) : null;
+      const thirdRid = thirdGame && Number.isFinite(Number(thirdGame.w)) ? Number(thirdGame.w) : null;
+
       const sortedByRecord = [...(rosters || [])]
         .filter((r) => Number.isFinite(Number(r?.roster_id)))
         .sort((a, b) => {
@@ -140,6 +174,12 @@ export async function GET() {
 
       const toiletRid = bracketWinnerRosterId(losersBracket);
 
+      // Wall of Shame: the league's worst record for the season (standings-
+      // based), not whoever happened to lose a placement/toilet-bowl game.
+      const lastPlaceRid = sortedByRecord.length
+        ? Number(sortedByRecord[sortedByRecord.length - 1].roster_id)
+        : null;
+
       const seasonLabel = safeStr(leagueData?.season) || "—";
 
       seasons.push({
@@ -148,9 +188,12 @@ export async function GET() {
         leagueName: safeStr(leagueData?.name) || "League",
         status: safeStr(leagueData?.status) || "",
         champion: rosterInfo(rosterToOwner, champRid),
+        runnerUp: rosterInfo(rosterToOwner, runnerUpRid),
+        third: rosterInfo(rosterToOwner, thirdRid),
         regSeason: rosterInfo(rosterToOwner, regRid),
         bestManager: rosterInfo(rosterToOwner, bestRid),
         toiletBowl: rosterInfo(rosterToOwner, toiletRid),
+        lastPlace: rosterInfo(rosterToOwner, lastPlaceRid),
       });
 
       const prev = safeStr(leagueData?.previous_league_id).trim();
