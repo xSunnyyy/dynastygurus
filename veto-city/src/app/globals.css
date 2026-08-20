@@ -66,6 +66,40 @@ body {
   }
 }
 
+/* Themed scrollbar for horizontally-scrolling sections (e.g. banners) */
+.themed-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(185 28 28 / 0.6) rgb(39 39 42 / 0.6); /* red-700/60 thumb, zinc-800/60 track */
+}
+
+.themed-scrollbar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-track {
+  background: rgb(39 39 42 / 0.6);
+  border-radius: 9999px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(185 28 28 / 0.6);
+  border-radius: 9999px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(220 38 38 / 0.8); /* red-600/80 */
+}
+
+/* Fully hidden scrollbar for sections that scroll by drag/touch instead */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Reduced motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *,

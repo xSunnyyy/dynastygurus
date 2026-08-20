@@ -1,4 +1,3 @@
-import Link from "next/link";
 import FloatingNav from "@/app/components/FloatingNav";
 import { ChampionshipBanners } from "./components/ChampionshipBanners";
 import { WeeklyMatchups } from "./components/WeeklyMatchups";
@@ -15,12 +14,6 @@ export default function HomePage() {
         {/* Small, clean hero (not a banner) */}
         <section className="mb-8 flex flex-col items-center gap-4 text-center">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Dynasty Gurus</h1>
-          <Link
-            href="/league/drafts"
-            className="inline-flex h-11 md:h-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/70 px-6 text-sm font-medium hover:bg-zinc-800 transition-colors"
-          >
-            View the Draft
-          </Link>
         </section>
 
         <ChampionshipBanners />

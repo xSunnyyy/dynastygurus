@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useDragScroll } from "@/app/lib/useDragScroll";
 
 type ChampionRecord = { wins: number; losses: number; ties: number } | null;
 
@@ -72,11 +73,14 @@ function Banner({
               {name}
             </div>
             <div className="mt-2 text-2xl font-black tracking-tight text-zinc-100">{season}</div>
-            {record ? (
-              <div className="mt-2 inline-flex items-center rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-300">
-                {record}
-              </div>
-            ) : null}
+            <div
+              className={
+                "mt-2 inline-flex items-center rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-300" +
+                (record ? "" : " invisible")
+              }
+            >
+              {record || "—"}
+            </div>
           </div>
         </div>
 
@@ -127,6 +131,8 @@ export function ChampionshipBanners() {
       .sort((a, b) => Number(b.season) - Number(a.season));
   }, [seasons]);
 
+  const scrollerRef = useDragScroll<HTMLDivElement>();
+
   if (err || (!loading && !champions.length)) return null;
 
   return (
@@ -135,7 +141,7 @@ export function ChampionshipBanners() {
         Championship Banners
       </div>
 
-      <div className="overflow-x-auto pb-4">
+      <div ref={scrollerRef} className="no-scrollbar cursor-grab overflow-x-auto pb-4">
         <div className="mx-auto flex w-max items-start gap-7 border-t-[3px] border-zinc-700/80 px-6 pt-0">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => (
