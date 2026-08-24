@@ -1,0 +1,79 @@
+export type RankingSourceKey = "fantasypros" | "espn";
+
+export type SourcePlayerRank = {
+  name: string;
+  position: string; // QB/RB/WR/TE/K/etc
+  team?: string | null;
+  age?: number | null;
+  rank: number; // 1 = best, within this source's own pool
+  positionRank?: number | null;
+  poolSize: number; // how many ranked players this source published (for normalizing)
+};
+
+export type SourceResult = {
+  source: RankingSourceKey;
+  label: string;
+  ok: boolean;
+  error?: string;
+  fetchedAt: string;
+  players: SourcePlayerRank[];
+};
+
+export type SourceRankRef = { rank: number; positionRank?: number | null };
+
+export type ConsensusPlayer = {
+  sleeperId: string;
+  name: string;
+  position: string;
+  nflTeam: string | null;
+  age: number | null;
+  consensusScore: number; // 0-100ish, higher = better
+  consensusRank: number | null; // overall rank among matched players
+  positionRank: number | null; // rank within position among matched players
+  sources: Partial<Record<RankingSourceKey, SourceRankRef>>;
+};
+
+export type TeamRankingRow = {
+  rosterId: number;
+  teamName: string;
+  ownerName: string;
+  ownerAvatar: string | null;
+
+  powerRank: number;
+  powerScore: number;
+
+  expectedWins: number;
+  expectedLosses: number;
+  expectedWinPct: number;
+
+  positionRanks: Record<"QB" | "RB" | "WR" | "TE", number | null>;
+  positionStrength: Record<"QB" | "RB" | "WR" | "TE", number>;
+
+  avgAge: number | null;
+
+  needs: string[];
+
+  roster: Array<{
+    sleeperId: string;
+    name: string;
+    position: string;
+    nflTeam: string | null;
+    age: number | null;
+    isStarter: boolean;
+    lineupSlot: string | null; // which starting slot this player fills, if any
+    consensusRank: number | null;
+    positionRank: number | null;
+    consensusScore: number;
+  }>;
+};
+
+export type RankingsResponse = {
+  season: string;
+  leagueName: string;
+  numTeams: number;
+  regularSeasonGames: number;
+  fetchedAt: string;
+  sources: Array<{ source: RankingSourceKey; label: string; ok: boolean; error?: string; fetchedAt: string; count: number }>;
+  unavailableSources: Array<{ label: string; reason: string }>;
+  teams: TeamRankingRow[];
+};
