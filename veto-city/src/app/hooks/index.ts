@@ -22,3 +22,5 @@ export type { StandingsData as StandingsQueryData } from "./useStandingsQuery";
 
 export { useMatchupsQuery } from "./useMatchupsQuery";
 export type { MatchupsData as MatchupsQueryData } from "./useMatchupsQuery";
+
+export { useRankingsQuery } from "./useRankingsQuery";
