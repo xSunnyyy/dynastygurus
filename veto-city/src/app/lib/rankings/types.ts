@@ -1,4 +1,4 @@
-export type RankingSourceKey = "fantasypros" | "espn";
+export type RankingSourceKey = "fantasypros" | "keeptradecut";
 
 export type SourcePlayerRank = {
   name: string;
@@ -8,6 +8,11 @@ export type SourcePlayerRank = {
   rank: number; // 1 = best, within this source's own pool
   positionRank?: number | null;
   poolSize: number; // how many ranked players this source published (for normalizing)
+  // When a source publishes a continuous value (e.g. KeepTradeCut's 0-9999
+  // dynasty trade value) rather than just an ordinal rank, it can supply a
+  // 0-100 percentile here so the consensus math preserves real value gaps
+  // instead of flattening them into equal rank steps.
+  percentileOverride?: number;
 };
 
 export type SourceResult = {
@@ -41,6 +46,12 @@ export type TeamRankingRow = {
 
   powerRank: number;
   powerScore: number;
+
+  // Actual results so far this season, straight from Sleeper.
+  currentRecord: { wins: number; losses: number; ties: number };
+  // How much weight actual results (vs. roster talent) carry in the blend
+  // below — grows from 0 toward 1 as more games are played.
+  resultsWeight: number;
 
   expectedWins: number;
   expectedLosses: number;

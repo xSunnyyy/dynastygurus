@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { LEAGUE_ID, SLEEPER_BASE as BASE } from "@/app/lib/vetocity";
 import { fetchPlayersMapServer } from "@/app/lib/players";
 import { fetchFantasyProsRankings } from "@/app/lib/rankings/sources/fantasypros";
-import { fetchEspnRankings } from "@/app/lib/rankings/sources/espn";
+import { fetchKeepTradeCutRankings } from "@/app/lib/rankings/sources/keeptradecut";
 import { computeRankings } from "@/app/lib/rankings/aggregate";
 import type { RankingsResponse } from "@/app/lib/rankings/types";
 
@@ -22,13 +22,13 @@ export async function GET() {
       return NextResponse.json(cache.data);
     }
 
-    const [league, users, rosters, playersMap, fantasypros, espn] = await Promise.all([
+    const [league, users, rosters, playersMap, fantasypros, keeptradecut] = await Promise.all([
       j<any>(`${BASE}/league/${LEAGUE_ID}`),
       j<any[]>(`${BASE}/league/${LEAGUE_ID}/users`),
       j<any[]>(`${BASE}/league/${LEAGUE_ID}/rosters`),
       fetchPlayersMapServer(),
       fetchFantasyProsRankings(),
-      fetchEspnRankings(),
+      fetchKeepTradeCutRankings(),
     ]);
 
     const data = computeRankings({
@@ -36,7 +36,7 @@ export async function GET() {
       users,
       rosters,
       playersMap,
-      sources: [fantasypros, espn],
+      sources: [fantasypros, keeptradecut],
     });
 
     cache = { ts: now, data };

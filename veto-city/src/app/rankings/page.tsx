@@ -54,9 +54,65 @@ function PositionRankCell({ rank, numTeams }: { rank: number | null; numTeams: n
   );
 }
 
+// Groups a starting slot into the display order QB, RB, WR, TE, FLEX, K, other.
+function slotGroupOrder(slot: string | null): number {
+  switch (slot) {
+    case "QB":
+      return 0;
+    case "RB":
+      return 1;
+    case "WR":
+      return 2;
+    case "TE":
+      return 3;
+    case "FLEX":
+    case "WRRB_FLEX":
+    case "REC_FLEX":
+    case "SUPER_FLEX":
+      return 4;
+    case "K":
+      return 5;
+    case "DEF":
+      return 6;
+    default:
+      return 7;
+  }
+}
+
+// Same QB/RB/WR/TE/K ordering for bench players, grouped by their own position.
+function positionGroupOrder(position: string): number {
+  switch ((position || "").toUpperCase()) {
+    case "QB":
+      return 0;
+    case "RB":
+      return 1;
+    case "WR":
+      return 2;
+    case "TE":
+      return 3;
+    case "K":
+      return 4;
+    case "DST":
+    case "DEF":
+      return 5;
+    default:
+      return 6;
+  }
+}
+
 function RosterBreakdown({ team }: { team: TeamRankingRow }) {
-  const starters = team.roster.filter((p) => p.isStarter);
-  const bench = team.roster.filter((p) => !p.isStarter);
+  const starters = [...team.roster]
+    .filter((p) => p.isStarter)
+    .sort(
+      (a, b) =>
+        slotGroupOrder(a.lineupSlot) - slotGroupOrder(b.lineupSlot) || b.consensusScore - a.consensusScore
+    );
+  const bench = [...team.roster]
+    .filter((p) => !p.isStarter)
+    .sort(
+      (a, b) =>
+        positionGroupOrder(a.position) - positionGroupOrder(b.position) || b.consensusScore - a.consensusScore
+    );
 
   const Row = ({ p }: { p: TeamRankingRow["roster"][number] }) => {
     const logo = nflTeamLogoUrl(p.nflTeam);
@@ -162,7 +218,11 @@ function TeamRow({ team, numTeams }: { team: TeamRankingRow; numTeams: number })
           </div>
         </td>
         <td className="px-3 py-3 text-center text-sm font-medium text-zinc-200">
-          {team.expectedWins}-{team.expectedLosses}
+          <div>{team.expectedWins}-{team.expectedLosses}</div>
+          <div className="mt-0.5 text-[10px] font-normal text-zinc-600">
+            actual {team.currentRecord.wins}-{team.currentRecord.losses}
+            {team.currentRecord.ties ? `-${team.currentRecord.ties}` : ""}
+          </div>
         </td>
         <PositionRankCell rank={team.positionRanks.QB} numTeams={numTeams} />
         <PositionRankCell rank={team.positionRanks.RB} numTeams={numTeams} />
@@ -205,9 +265,12 @@ export default function RankingsPage() {
       <div className="mx-auto max-w-6xl px-4 py-10">
         <div className="mb-2 text-2xl font-semibold tracking-tight">Rankings</div>
         <p className="mb-6 max-w-3xl text-sm text-zinc-400">
-          Power rankings built from your league&apos;s actual rosters, scored against outside dynasty/redraft
-          consensus rankings rather than Sleeper&apos;s own numbers alone. Expected record, positional strength,
-          team needs, and average age are all derived from the same blended player values below.
+          Power rankings built from your league&apos;s actual rosters, scored against outside dynasty
+          consensus rankings rather than Sleeper&apos;s own numbers alone. Positional strength, team needs,
+          and average age come from a blend of FantasyPros&apos; expert consensus and KeepTradeCut&apos;s
+          crowdsourced dynasty trade values. Expected record blends that roster talent with each team&apos;s
+          actual scoring margin this season (Pythagorean win expectation), leaning more on real results the
+          more games are played.
         </p>
 
         {isLoading ? (
