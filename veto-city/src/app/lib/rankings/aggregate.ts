@@ -10,13 +10,19 @@ import type {
 } from "./types";
 
 // How much weight each source's percentile score carries in the consensus.
-// FantasyPros' dynasty-overall list is itself a consensus of ~20 experts and
-// is dynasty-specific, so it leads; ESPN is a single redraft-value snapshot,
-// weighted as a secondary signal.
+// Both sources are dynasty-native and community-trusted (FantasyPros is a
+// ~20-expert consensus, KeepTradeCut a crowdsourced trade-value consensus),
+// so they're weighted evenly.
 const SOURCE_WEIGHTS: Record<RankingSourceKey, number> = {
-  fantasypros: 0.65,
-  espn: 0.35,
+  fantasypros: 0.5,
+  keeptradecut: 0.5,
 };
+
+// Shrinkage constant for blending roster-talent projections with actual
+// results: after this many games played, real results carry as much weight
+// as the talent prior; beyond it, real results dominate. Standard empirical-
+// Bayes-style regression toward the mean for small in-season samples.
+const RESULTS_REGRESSION_GAMES = 4;
 
 const SCORED_POSITIONS = ["QB", "RB", "WR", "TE"] as const;
 type ScoredPosition = (typeof SCORED_POSITIONS)[number];
@@ -60,8 +66,11 @@ function buildConsensus(
       const sleeperId = matchSleeperId(index, p.name, p.position);
       if (!sleeperId) continue;
 
-      // Percentile within this source's own pool: 1st ranked ~= 100, last ~= 0.
-      const percentile = 100 * (1 - (p.rank - 1) / Math.max(1, p.poolSize - 1));
+      // Prefer a source's own value-based percentile (preserves real talent
+      // gaps) and fall back to a rank-based percentile — 1st ranked ~= 100,
+      // last ~= 0 — for sources that only publish an ordinal rank.
+      const percentile =
+        p.percentileOverride ?? 100 * (1 - (p.rank - 1) / Math.max(1, p.poolSize - 1));
 
       const entry = contributions.get(sleeperId) || {
         weightSum: 0,
@@ -201,10 +210,13 @@ export function computeRankings(params: {
     teamName: string;
     ownerName: string;
     ownerAvatar: string | null;
-    powerScore: number;
+    talentScore: number;
     avgAge: number | null;
     positionStrength: Record<ScoredPosition, number>;
     roster: TeamRankingRow["roster"];
+    currentRecord: { wins: number; losses: number; ties: number };
+    gamesPlayed: number;
+    pythWinPct: number;
   };
 
   const teamCalcs: TeamCalc[] = rosters.map((r: any) => {
@@ -229,12 +241,12 @@ export function computeRankings(params: {
     }
 
     const positionStrength: Record<ScoredPosition, number> = { QB: 0, RB: 0, WR: 0, TE: 0 };
-    let powerScore = 0;
+    let talentScore = 0;
 
     for (const { slot, sleeperId } of lineup.slots) {
       if (!sleeperId) continue;
       const score = scoreFor(consensus, sleeperId);
-      powerScore += score;
+      talentScore += score;
       if (SLOT_ELIGIBILITY[slot]?.[0] && slot !== "K" && slot !== "DEF") {
         const pos = (playersMap[sleeperId]?.position || "").toUpperCase();
         if (isScoredPosition(pos)) positionStrength[pos] += score;
@@ -244,10 +256,22 @@ export function computeRankings(params: {
     for (const [pos, score] of bestRemainingByPos.entries()) {
       positionStrength[pos] += score * 0.25;
     }
-    powerScore += remaining.reduce((sum, pid) => sum + scoreFor(consensus, pid), 0) * 0.1;
+    talentScore += remaining.reduce((sum, pid) => sum + scoreFor(consensus, pid), 0) * 0.1;
 
     const ages = rosterIds.map((pid) => playersMap[pid]?.age).filter((a): a is number => typeof a === "number");
     const avgAge = ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : null;
+
+    const rs = r.settings || {};
+    const wins = Number(rs.wins) || 0;
+    const losses = Number(rs.losses) || 0;
+    const ties = Number(rs.ties) || 0;
+    const gamesPlayed = wins + losses + ties;
+    const pf = (Number(rs.fpts) || 0) + (Number(rs.fpts_decimal) || 0) / 100;
+    const pa = (Number(rs.fpts_against) || 0) + (Number(rs.fpts_against_decimal) || 0) / 100;
+    // Standard Pythagorean win expectation (points-for^2 over PF^2+PA^2) —
+    // the same sabermetric approach used across sports to estimate a team's
+    // "true" win rate from scoring margin rather than raw win-loss luck.
+    const pythWinPct = pf + pa > 0 ? pf ** 2 / (pf ** 2 + pa ** 2) : 0.5;
 
     const roster: TeamRankingRow["roster"] = rosterIds.map((pid) => {
       const meta = playersMap[pid];
@@ -273,17 +297,15 @@ export function computeRankings(params: {
       teamName,
       ownerName,
       ownerAvatar,
-      powerScore,
+      talentScore,
       avgAge,
       positionStrength,
       roster,
+      currentRecord: { wins, losses, ties },
+      gamesPlayed,
+      pythWinPct,
     };
   });
-
-  // Rank teams by power score and by each position's strength.
-  const byPower = [...teamCalcs].sort((a, b) => b.powerScore - a.powerScore);
-  const powerRankByRoster = new Map<number, number>();
-  byPower.forEach((t, i) => powerRankByRoster.set(t.rosterId, i + 1));
 
   const positionRanksByRoster = new Map<number, Record<ScoredPosition, number | null>>();
   for (const pos of SCORED_POSITIONS) {
@@ -295,18 +317,35 @@ export function computeRankings(params: {
     });
   }
 
-  const mean = teamCalcs.reduce((s, t) => s + t.powerScore, 0) / Math.max(1, teamCalcs.length);
-  const variance = teamCalcs.reduce((s, t) => s + (t.powerScore - mean) ** 2, 0) / Math.max(1, teamCalcs.length);
+  const mean = teamCalcs.reduce((s, t) => s + t.talentScore, 0) / Math.max(1, teamCalcs.length);
+  const variance =
+    teamCalcs.reduce((s, t) => s + (t.talentScore - mean) ** 2, 0) / Math.max(1, teamCalcs.length);
   const stdDev = Math.sqrt(variance) || 1;
 
   const settings = league?.settings || {};
   const playoffStart = Number(settings.playoff_week_start) || 15;
   const regularSeasonGames = Math.max(1, playoffStart - 1);
 
-  const teams: TeamRankingRow[] = teamCalcs.map((t) => {
-    const z = (t.powerScore - mean) / stdDev;
-    const winPct = Math.min(0.94, Math.max(0.06, 0.5 + z * 0.11));
-    const expectedWins = Math.round(winPct * regularSeasonGames);
+  // Power rank and expected record both come from the same blended win%:
+  // a roster-talent projection (via z-score of the lineup's consensus value)
+  // shrunk toward this season's actual Pythagorean win expectation as more
+  // games get played. Early season leans on talent; a half-season in, real
+  // results dominate. This keeps "power rank" and "expected record" mutually
+  // consistent instead of two competing opinions about the same team.
+  const blended = teamCalcs.map((t) => {
+    const talentZ = (t.talentScore - mean) / stdDev;
+    const talentWinPct = Math.min(0.94, Math.max(0.06, 0.5 + talentZ * 0.11));
+    const resultsWeight = t.gamesPlayed / (t.gamesPlayed + RESULTS_REGRESSION_GAMES);
+    const blendedWinPct = (1 - resultsWeight) * talentWinPct + resultsWeight * t.pythWinPct;
+    return { calc: t, resultsWeight, blendedWinPct };
+  });
+
+  blended.sort(
+    (a, b) => b.blendedWinPct - a.blendedWinPct || b.calc.talentScore - a.calc.talentScore
+  );
+
+  const teams: TeamRankingRow[] = blended.map(({ calc: t, resultsWeight, blendedWinPct }, i) => {
+    const expectedWins = Math.round(blendedWinPct * regularSeasonGames);
     const positionRanks = positionRanksByRoster.get(t.rosterId) || { QB: null, RB: null, WR: null, TE: null };
 
     return {
@@ -314,11 +353,13 @@ export function computeRankings(params: {
       teamName: t.teamName,
       ownerName: t.ownerName,
       ownerAvatar: t.ownerAvatar,
-      powerRank: powerRankByRoster.get(t.rosterId) || 0,
-      powerScore: t.powerScore,
+      powerRank: i + 1,
+      powerScore: blendedWinPct * 100,
+      currentRecord: t.currentRecord,
+      resultsWeight,
       expectedWins,
       expectedLosses: regularSeasonGames - expectedWins,
-      expectedWinPct: winPct,
+      expectedWinPct: blendedWinPct,
       positionRanks,
       positionStrength: t.positionStrength,
       avgAge: t.avgAge,
@@ -326,8 +367,6 @@ export function computeRankings(params: {
       roster: t.roster,
     };
   });
-
-  teams.sort((a, b) => a.powerRank - b.powerRank);
 
   return {
     season: String(league?.season || ""),
